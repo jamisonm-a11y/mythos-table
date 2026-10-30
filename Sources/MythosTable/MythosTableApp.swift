@@ -1,0 +1,63 @@
+import AppKit
+import SwiftUI
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Needed when launched as a bare SwiftPM executable rather than an .app bundle.
+        if CommandLine.arguments.contains("--self-test") { SelfTest.runIfRequested(); return }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
+@main
+struct MythosTableApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var store = GameStore()
+
+    var body: some Scene {
+        WindowGroup("MythosTable") {
+            ContentView()
+                .environment(store)
+                .frame(minWidth: 1200, minHeight: 800)
+                .task { await store.loadCards() }
+        }
+        .commands { TableCommands(store: store) }
+    }
+}
+
+struct TableCommands: Commands {
+    let store: GameStore
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Table") { store.newTable() }
+            Button("Open Table…") { store.openTable() }.keyboardShortcut("o")
+            Divider()
+            Button("Save Table…") { store.saveTable() }.keyboardShortcut("s")
+        }
+        CommandMenu("Table") {
+            Button("Set Up Scenario…") { store.showingSetup = true }.keyboardShortcut("u", modifiers: [.command, .shift])
+            Button("Import Deck…") { store.showingDeckImport = true }.keyboardShortcut("i", modifiers: [.command, .shift])
+            Button("Chaos Bag…") { store.showingChaosBag = true }.keyboardShortcut("b", modifiers: [.command, .shift])
+            Button("Campaign Log…") { store.showingCampaignLog = true }.keyboardShortcut("l", modifiers: [.command, .shift])
+            Divider()
+            Button("Draw Player Card") { store.drawPlayerCard() }
+            Button("Draw Encounter Card") { store.drawEncounterCard() }
+            Button("Reveal Chaos Token") { store.revealChaosToken() }
+            Button("Next Phase") { store.nextPhase() }
+        }
+        CommandMenu("Data") {
+            Picker("Card Pool", selection: Binding(get: { store.state.cardPool }, set: { store.setCardPool($0) })) {
+                ForEach(CardPool.allCases) { Text($0.title).tag($0) }
+            }
+            Button("Refresh Card Data from ArkhamDB") { Task { await store.loadCards(forceRefresh: true) } }
+            Divider()
+            Button("Reload Scenario Config") { store.reloadConfig() }
+            Button("Reset Scenario Config to Defaults") { ScenarioConfigStore.resetToDefaults(); store.reloadConfig() }
+            Button("Show Data Folder in Finder") { store.revealDataFolder() }
+        }
+    }
+}
