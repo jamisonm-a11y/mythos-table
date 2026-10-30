@@ -159,6 +159,16 @@ private struct MapCard: View {
 
     var body: some View {
         CardThumb(instance: instance, width: 100)
+            .overlay(alignment: .bottom) {
+                if store.state.investigatorLocationID == instance.id {
+                    Label("You", systemImage: "person.fill")
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.accentColor, in: Capsule())
+                        .foregroundStyle(.white)
+                        .offset(y: 10)
+                }
+            }
             .position(x: instance.position.x + dragOffset.width, y: instance.position.y + dragOffset.height)
             .gesture(
                 DragGesture(minimumDistance: 3, coordinateSpace: .named("map"))

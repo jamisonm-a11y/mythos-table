@@ -45,7 +45,13 @@ struct InspectorView: View {
                     }
 
                     if loc.zone == .map {
-                        Button("Bring to Front") { store.bringToFront(id) }.buttonStyle(.borderless)
+                        HStack {
+                            Button("Bring to Front") { store.bringToFront(id) }
+                            if card?.typeCode == "location" && store.state.investigatorLocationID != id {
+                                Button("Investigator Is Here") { store.setInvestigatorLocation(id) }
+                            }
+                        }
+                        .buttonStyle(.borderless)
                     }
 
                     if let card, card.typeCode == "location", let clues = card.clues {

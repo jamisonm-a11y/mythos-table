@@ -15,15 +15,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct MythosTableApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var store = GameStore()
+    @State private var store: GameStore
+    @State private var gameMaster: GameMaster
+
+    init() {
+        let store = GameStore()
+        _store = State(initialValue: store)
+        _gameMaster = State(initialValue: GameMaster(store: store))
+    }
 
     var body: some Scene {
-        WindowGroup("MythosTable") {
+        WindowGroup("MythosTable", id: "table") {
             ContentView()
                 .environment(store)
+                .environment(gameMaster)
                 .frame(minWidth: 1200, minHeight: 800)
                 .task { await store.loadCards() }
         }
+        .defaultSize(width: 1500, height: 940)
         .commands { TableCommands(store: store) }
 
         Window("How to Play", id: "how-to-play") {
@@ -38,6 +47,11 @@ struct TableCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(before: .windowList) {
+            Button("Show Table") { openWindow(id: "table") }
+                .keyboardShortcut("0")
+            Divider()
+        }
         CommandGroup(replacing: .help) {
             Button("How to Play") { openWindow(id: "how-to-play") }
                 .keyboardShortcut("?", modifiers: .command)

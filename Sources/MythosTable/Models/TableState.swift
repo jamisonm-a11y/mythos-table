@@ -84,6 +84,10 @@ struct TableState: Codable {
     var resourcePool = 5
     var lastToken: ChaosToken?
     var deck: DeckList?
+    /// Notes the game master keeps for itself between runs.
+    var autopilotNotes: [String]?
+    /// The map location the investigator is currently at.
+    var investigatorLocationID: UUID?
     var log: [LogEntry] = []
 
     subscript(zone: Zone) -> [CardInstance] {

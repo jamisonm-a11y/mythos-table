@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// A rules primer in our own words, with pointers to the matching MythosTable controls.
@@ -22,7 +23,7 @@ enum Guide {
             "**1. Pick a difficulty.** Open **Table → Chaos Bag…** and choose Easy, Standard, Hard, or Expert. New players should start on Easy or Standard. The bag is saved with your campaign.",
             "**2. Import a deck.** Choose **Table → Import Deck…** and enter an ArkhamDB decklist ID or URL. Decklist **1** is the Roland Banks starter deck, which works well for learning.",
             "**3. Set up the scenario.** Choose **Table → Set Up Scenario…**, select **The Gathering**, check the encounter sets, and click **Set Up**. The agenda and act decks, the scenario reference card, the locations, and a shuffled encounter deck are laid out for you.",
-            "**4. Follow the campaign guide's setup.** Open the **Locations** tab on the right and drag the starting location onto the map. Locations start on their unrevealed side; click **Flip** to reveal one, then **Place printed clues**. Leave any other set-aside cards where the guide tells you.",
+            "**4. Follow the campaign guide's setup.** Open the **Tray** tab on the right and drag the starting location onto the map. Locations start on their unrevealed side; click **Flip** to reveal one, then **Place printed clues**. Leave any other set-aside cards where the guide tells you.",
             "**5. Draw your opening hand.** You start with **5 resources** (shown in the top bar). Click **Opening Hand** to draw 5 cards. If you draw a weakness, move it aside, draw a replacement, and shuffle the weakness back into your deck once your hand is final. You may **Mulligan** once to replace any cards you don't want.",
             "**6. Play.** The first round begins in the **Investigation** phase, because round 1 skips the Mythos phase. You have 3 actions. Use **Next Phase** to move through the round.",
         ], tip: "Read the agenda and act cards before you start; double-click any card to zoom in."),
@@ -55,7 +56,7 @@ enum Guide {
         GuideSection(id: "locations", title: "Locations & Clues", icon: "map", paragraphs: [
             "Locations start unrevealed. When an investigator enters one, flip it to its revealed side and place clues equal to its clue value. A value marked \"per investigator\" is multiplied by the number of investigators, which is just 1 when you play solo.",
             "Clues you discover go on your investigator. When you have enough, you can spend them to advance the act.",
-        ], tip: "In MythosTable, drag locations from the Locations tab onto the map and arrange them like the layout in the campaign guide. Track clues on the location card, and on your investigator card once you take them."),
+        ], tip: "In MythosTable, drag locations from the Tray tab onto the map and arrange them like the layout in the campaign guide. Track clues on the location card, and on your investigator card once you take them."),
         GuideSection(id: "enemies", title: "Enemies", icon: "exclamationmark.triangle", paragraphs: [
             "An enemy drawn from the encounter deck spawns engaged with you at your location, unless its **Spawn** instruction puts it somewhere else.",
             "An engaged enemy stays with you and attacks during the Enemy phase. Defeat it by dealing damage equal to its health; a defeated enemy with **Victory** points goes to the victory display, and any other goes to the encounter discard.",
@@ -79,6 +80,13 @@ enum Guide {
             "A scenario ends with a **resolution** in the campaign guide, reached by advancing the last act, by the agenda running out, or by being defeated. Read the resolution and record what it tells you.",
             "**Experience (XP):** add up the Victory points in the victory display, plus any bonus the resolution gives. Spend XP between scenarios to upgrade your deck on ArkhamDB, then import the updated deck.",
         ], tip: "Open Table → Campaign Log… (⇧⌘L) to record the resolution and XP (added to each surviving investigator), trauma, and notes. It's saved between scenarios."),
+        GuideSection(id: "claude", title: "Playing with Claude", icon: "sparkles", paragraphs: [
+            "Open the **Claude** tab to have Claude act as your game master. You make every decision for your investigator; Claude carries them out and runs the rest of the game.",
+            "**On your turn**, type what you do in plain words, like \"Investigate the Study, committing Magnifying Glass\" or \"Move to the Hallway\", or start one with the quick buttons. Claude spends the action and resolves it: it reveals a chaos token for any test, then handles clues, damage, newly revealed locations, enemies, attacks of opportunity, and act objectives.",
+            "**When you're done**, click **End Turn** (⇧⌘↩). Claude runs the Enemy and Upkeep phases and the next round's Mythos phase (encounter cards, doom, hunters, attacks, and cleanup), then hands the turn back to you.",
+            "**Your choices stay yours.** Whenever a card gives you a choice, Claude asks in the panel and waits for your answer.",
+            "After **Set Up Scenario**, **Place Starting Locations** lets Claude lay out the opening map for you.",
+        ], tip: "Claude uses your own Anthropic API key, billed to your account; the panel shows a running cost estimate. You can still fix anything by hand with the normal table controls, and Claude picks up the current table state each time."),
         GuideSection(id: "controls", title: "MythosTable Controls", icon: "keyboard", paragraphs: [
             "**Cards:** click to inspect, double-click (or ⌘Y) to zoom, right-click for quick actions, and drag to move a card between zones or onto the map. On the map, drag a card to reposition it.",
             "**Readability:** **View → Card Size** makes every card bigger. The zoom view lets you flip between front and back without changing the table.",
@@ -91,6 +99,7 @@ enum Guide {
 
 struct HowToPlayView: View {
     @State private var selection: String? = Guide.sections.first?.id
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         NavigationSplitView {
@@ -129,6 +138,11 @@ struct HowToPlayView: View {
             }
         }
         .frame(minWidth: 820, minHeight: 560)
+        .onAppear {
+            // macOS can reopen this window by itself at launch; make sure the table comes back too.
+            let tableOpen = NSApp.windows.contains { $0.isVisible && $0.identifier?.rawValue.hasPrefix("table") == true }
+            if !tableOpen { openWindow(id: "table") }
+        }
     }
 
     @ViewBuilder private func navigation(for section: GuideSection) -> some View {

@@ -40,6 +40,35 @@ enum SelfTest {
                 store.mulligan(Set(store.state[.hand].prefix(2).map(\.id)))
                 print("After mulligan: hand \(store.state[.hand].count), deck \(store.state[.playerDeck].count)")
             } else { print("FAIL: deck import") }
+            // Game master tools against The Gathering, offline.
+            if let gathering = store.config.campaigns.flatMap(\.scenarios).first {
+                store.setUp(SetupPlan(scenario: gathering, deckSets: gathering.encounterSets,
+                                      setAsideSets: [], setAsideCards: gathering.setAsideCards ?? []))
+                @MainActor func call(_ name: String, _ input: [String: Any] = [:]) -> String {
+                    do { return GameMaster.encode(try store.runTool(name, input)) } catch { return "ERROR \(error.localizedDescription)" }
+                }
+                let snapshot = call("get_table_state")
+                let study = store.state[.locationsTray].first!
+                let sid = store.shortID(study.id)
+                print("\nGame master tools:")
+                print(" state bytes:", snapshot.count, snapshot.contains("\"zones\"") ? "ok" : "BAD")
+                print(" move:", call("move_card", ["id": sid, "zone": "map", "x": 300, "y": 300]))
+                print(" flip:", call("flip_card", ["id": sid]).prefix(90))
+                print(" location:", call("set_investigator_location", ["id": sid]))
+                print(" clues:", call("adjust_tokens", ["id": sid, "token": "clues", "delta": 2]))
+                print(" token:", call("reveal_chaos_token", ["test": "self-test"]))
+                print(" encounter:", call("draw_encounter_card").prefix(90))
+                print(" draw:", call("draw_player_cards", ["count": 2]).prefix(90))
+                print(" action:", call("spend_action", ["description": "test"]))
+                print(" advance:", call("advance", ["deck": "agenda"]).prefix(60))
+                print(" phase:", call("next_phase"))
+                print(" remember:", call("remember", ["note": "test note"]))
+                print(" bad id:", call("flip_card", ["id": "zzzzzz"]))
+                print(" state has location:", call("get_table_state").contains("investigator_location\":{"))
+                let body: [String: Any] = ["system": GameMaster.systemPrompt, "tools": GameMasterTools.definitions,
+                                           "messages": [["role": "user", "content": "x"]]]
+                print(" request body valid JSON:", JSONSerialization.isValidJSONObject(body))
+            }
             store.state.cardPool = .rcore
             await store.loadCards()
             print("Revised core pool: \(store.cards.count) cards, \(store.encounterSetNames.count) encounter sets")

@@ -24,6 +24,27 @@ struct Card: Codable, Identifiable, Hashable {
     var permanent: Bool?
     var health: Int?
     var sanity: Int?
+    // Rules text and stats, used by the game master. Fetched at runtime only.
+    var text: String?
+    var backText: String?
+    var backName: String?
+    var traits: String?
+    var cost: Int?
+    var xp: Int?
+    var slot: String?
+    var skillWillpower: Int?
+    var skillIntellect: Int?
+    var skillCombat: Int?
+    var skillAgility: Int?
+    var skillWild: Int?
+    var shroud: Int?
+    var enemyFight: Int?
+    var enemyEvade: Int?
+    var enemyDamage: Int?
+    var enemyHorror: Int?
+    var healthPerInvestigator: Bool?
+    var cluesFixed: Bool?
+    var victory: Int?
 
     var id: String { code }
 
@@ -31,6 +52,10 @@ struct Card: Codable, Identifiable, Hashable {
         case code, name, subname, typeCode, subtypeCode, factionCode, packCode
         case encounterCode, encounterName, encounterPosition, stage, doom, clues
         case quantity, doubleSided, imagesrc, backimagesrc, permanent, health, sanity
+        case text, backText, backName, traits, cost, xp, slot
+        case skillWillpower, skillIntellect, skillCombat, skillAgility, skillWild
+        case shroud, enemyFight, enemyEvade, enemyDamage, enemyHorror
+        case healthPerInvestigator, cluesFixed, victory
     }
 
     init(from decoder: Decoder) throws {
@@ -55,6 +80,26 @@ struct Card: Codable, Identifiable, Hashable {
         permanent = try? c.decodeIfPresent(Bool.self, forKey: .permanent)
         health = c.lenientInt(.health)
         sanity = c.lenientInt(.sanity)
+        text = try? c.decodeIfPresent(String.self, forKey: .text)
+        backText = try? c.decodeIfPresent(String.self, forKey: .backText)
+        backName = try? c.decodeIfPresent(String.self, forKey: .backName)
+        traits = try? c.decodeIfPresent(String.self, forKey: .traits)
+        cost = c.lenientInt(.cost)
+        xp = c.lenientInt(.xp)
+        slot = try? c.decodeIfPresent(String.self, forKey: .slot)
+        skillWillpower = c.lenientInt(.skillWillpower)
+        skillIntellect = c.lenientInt(.skillIntellect)
+        skillCombat = c.lenientInt(.skillCombat)
+        skillAgility = c.lenientInt(.skillAgility)
+        skillWild = c.lenientInt(.skillWild)
+        shroud = c.lenientInt(.shroud)
+        enemyFight = c.lenientInt(.enemyFight)
+        enemyEvade = c.lenientInt(.enemyEvade)
+        enemyDamage = c.lenientInt(.enemyDamage)
+        enemyHorror = c.lenientInt(.enemyHorror)
+        healthPerInvestigator = try? c.decodeIfPresent(Bool.self, forKey: .healthPerInvestigator)
+        cluesFixed = try? c.decodeIfPresent(Bool.self, forKey: .cluesFixed)
+        victory = c.lenientInt(.victory)
     }
 
     var displayName: String {

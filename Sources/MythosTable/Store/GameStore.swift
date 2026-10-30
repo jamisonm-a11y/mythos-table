@@ -247,6 +247,12 @@ final class GameStore {
         zoomedID = id
     }
 
+    func setInvestigatorLocation(_ id: UUID) {
+        guard state.locate(id)?.zone == .map else { return }
+        state.investigatorLocationID = id
+        log("Investigator is now at \(name(of: id)).")
+    }
+
     func setPosition(_ id: UUID, _ point: CGPoint) {
         guard let loc = state.locate(id), loc.zone == .map else { return }
         state[.map][loc.index].position = point

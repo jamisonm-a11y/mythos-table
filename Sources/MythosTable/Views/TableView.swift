@@ -17,7 +17,7 @@ struct ContentView: View {
                     CenterColumn()
                         .frame(minWidth: 560)
                     SidePanel()
-                        .frame(minWidth: 300, idealWidth: 340, maxWidth: 460)
+                        .frame(minWidth: 360, idealWidth: 380, maxWidth: 480)
                 }
             }
         }
@@ -67,14 +67,26 @@ struct StatusBar: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        // Fall back to a compact layout when the window is too narrow for the full bar.
+        ViewThatFits(in: .horizontal) {
+            bar(compact: false)
+            bar(compact: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private func bar(compact: Bool) -> some View {
         @Bindable var store = store
-        HStack(spacing: 16) {
+        return HStack(spacing: compact ? 10 : 16) {
             VStack(alignment: .leading, spacing: 0) {
                 Text(store.state.scenarioName ?? "No scenario").font(.headline)
                 Text(store.activeCampaign.map { "\($0.name) · \($0.difficulty.title)" } ?? "No campaign")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            .frame(minWidth: 150, alignment: .leading)
+            .lineLimit(1)
+            .frame(minWidth: compact ? 110 : 150, alignment: .leading)
 
             Divider().frame(height: 30)
 
@@ -83,7 +95,7 @@ struct StatusBar: View {
                 Picker("Phase", selection: $store.state.phase) {
                     ForEach(Phase.allCases) { Text($0.title).tag($0) }
                 }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                .modifier(PhasePickerStyle(compact: compact))
                 Button("Next Phase") { store.nextPhase() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .fixedSize()
@@ -92,7 +104,7 @@ struct StatusBar: View {
             Divider().frame(height: 30)
 
             HStack(spacing: 4) {
-                Text("Actions").font(.caption).foregroundStyle(.secondary)
+                if !compact { Text("Actions").font(.caption).foregroundStyle(.secondary) }
                 ForEach(0..<max(3, store.state.actionsRemaining), id: \.self) { i in
                     Image(systemName: i < store.state.actionsRemaining ? "circle.fill" : "circle")
                         .foregroundStyle(i < store.state.actionsRemaining ? Color.accentColor : .secondary)
@@ -100,8 +112,9 @@ struct StatusBar: View {
                 }
                 Stepper("", value: Binding(get: { store.state.actionsRemaining }, set: { store.setActions($0) }), in: 0...9)
                     .labelsHidden()
-                Button("Reset") { store.setActions(3) }.buttonStyle(.borderless).font(.caption)
+                if !compact { Button("Reset") { store.setActions(3) }.buttonStyle(.borderless).font(.caption) }
             }
+            .fixedSize()
             .help("Click a pip to spend or restore an action")
 
             Divider().frame(height: 30)
@@ -112,6 +125,7 @@ struct StatusBar: View {
                 Text("\(store.state.resourcePool)").monospacedDigit().frame(minWidth: 20)
                 Button { store.adjustResources(1) } label: { Image(systemName: "plus") }.buttonStyle(.borderless)
             }
+            .fixedSize()
             .help("Investigator resource pool")
 
             DoomMeter()
@@ -126,7 +140,7 @@ struct StatusBar: View {
                 Button {
                     withAnimation(.spring(duration: 0.25)) { store.revealChaosToken() }
                 } label: {
-                    Label("Reveal Token", systemImage: "bag.fill")
+                    Label(compact ? "Reveal" : "Reveal Token", systemImage: "bag.fill")
                 }
                 .fixedSize()
                 .keyboardShortcut("t", modifiers: .command)
@@ -135,9 +149,17 @@ struct StatusBar: View {
                     .help("How to Play")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.bar)
+    }
+}
+
+private struct PhasePickerStyle: ViewModifier {
+    let compact: Bool
+    func body(content: Content) -> some View {
+        if compact {
+            content.pickerStyle(.menu).labelsHidden().fixedSize()
+        } else {
+            content.pickerStyle(.segmented).labelsHidden().fixedSize()
+        }
     }
 }
 
@@ -155,6 +177,7 @@ private struct DoomMeter: View {
                 .foregroundStyle(reached ? .red : .primary)
             if reached { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red) }
         }
+        .fixedSize()
         .padding(.horizontal, 8).padding(.vertical, 4)
         .background(reached ? Color.red.opacity(0.15) : .clear, in: Capsule())
         .help("Total doom in play vs. the current agenda's doom threshold")
@@ -299,12 +322,13 @@ struct PlayerRow: View {
 // MARK: - Side panel
 
 enum SideTab: String, CaseIterable, Identifiable {
-    case inspector = "Inspector", tray = "Locations", aside = "Set Aside", victory = "Victory", log = "Log"
+    case inspector = "Card", tray = "Tray", aside = "Aside", victory = "Victory", log = "Log", gameMaster = "Claude"
     var id: String { rawValue }
 }
 
 struct SidePanel: View {
     @Environment(GameStore.self) private var store
+    @Environment(GameMaster.self) private var gameMaster
     @State private var tab: SideTab = .inspector
 
     var body: some View {
@@ -320,9 +344,11 @@ struct SidePanel: View {
             case .aside: ZoneGrid(zone: .setAside)
             case .victory: ZoneGrid(zone: .victory)
             case .log: LogView()
+            case .gameMaster: GameMasterPanel()
             }
         }
-        .onChange(of: store.selectedID) { _, new in if new != nil { tab = .inspector } }
+        // Keep the transcript visible while the game master is selecting cards.
+        .onChange(of: store.selectedID) { _, new in if new != nil && !gameMaster.isRunning { tab = .inspector } }
     }
 }
 
