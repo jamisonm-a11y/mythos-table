@@ -27,6 +27,12 @@ struct ContentView: View {
         .sheet(isPresented: $store.showingCampaignLog) { CampaignLogSheet() }
         .sheet(isPresented: $store.showingMulligan) { MulliganSheet() }
         .sheet(item: $store.searchZone) { zone in ZoneSearchSheet(zone: zone) }
+        .overlay {
+            if let id = store.zoomedID, let inst = store.state.instance(id) {
+                CardZoomOverlay(instance: inst, card: store.card(for: inst)) { store.zoomedID = nil }
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: store.zoomedID)
         .alert("MythosTable", isPresented: Binding(get: { store.alertMessage != nil }, set: { if !$0 { store.alertMessage = nil } })) {
             Button("OK") { store.alertMessage = nil }
         } message: {
@@ -58,6 +64,7 @@ private struct LoadingView: View {
 
 struct StatusBar: View {
     @Environment(GameStore.self) private var store
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         @Bindable var store = store
@@ -123,6 +130,9 @@ struct StatusBar: View {
                 }
                 .fixedSize()
                 .keyboardShortcut("t", modifiers: .command)
+                Button { openWindow(id: "how-to-play") } label: { Image(systemName: "questionmark.circle") }
+                    .buttonStyle(.borderless)
+                    .help("How to Play")
             }
         }
         .padding(.horizontal, 12)

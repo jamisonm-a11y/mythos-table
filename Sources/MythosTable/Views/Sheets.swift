@@ -422,6 +422,7 @@ struct ZoneSearchSheet: View {
     @Environment(\.dismiss) private var dismiss
     let zone: Zone
     @State private var filter = ""
+    @State private var zoomed: CardInstance?
 
     var body: some View {
         let cards = store.state[zone].enumerated().filter { _, inst in
@@ -440,7 +441,8 @@ struct ZoneSearchSheet: View {
                         VStack(spacing: 4) {
                             CardFaceView(instance: inst, card: store.card(for: inst))
                                 .frame(width: 110, height: 154)
-                                .onTapGesture { store.selectedID = inst.id }
+                                .onTapGesture(count: 2) { zoomed = inst }
+                                .help("Double-click to zoom")
                             Text("\(index + 1). \(store.card(for: inst)?.name ?? inst.code)").font(.caption).lineLimit(1)
                             MoveMenu(id: inst.id).fixedSize().controlSize(.small)
                         }
@@ -455,5 +457,10 @@ struct ZoneSearchSheet: View {
         }
         .padding(20)
         .frame(width: 720, height: 600)
+        .overlay {
+            if let zoomed {
+                CardZoomOverlay(instance: zoomed, card: store.card(for: zoomed)) { self.zoomed = nil }
+            }
+        }
     }
 }

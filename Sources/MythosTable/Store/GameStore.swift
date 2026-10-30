@@ -22,6 +22,8 @@ final class GameStore {
     // Table
     var state = TableState() { didSet { scheduleAutosave() } }
     var selectedID: UUID?
+    /// Card shown in the full-window zoom overlay.
+    var zoomedID: UUID?
 
     // Config & campaign
     var config: ScenarioConfigFile
@@ -237,6 +239,12 @@ final class GameStore {
             let where_ = zone.isDeck ? (bottom ? "bottom of \(zone.title)" : "top of \(zone.title)") : zone.title
             log("Moved \(card(for: inst)?.displayName ?? inst.code) from \(loc.zone.title) to \(where_).")
         }
+    }
+
+    /// Opens the zoom overlay; hidden deck cards stay hidden.
+    func zoom(_ id: UUID?) {
+        guard let id, let loc = state.locate(id), !loc.zone.isFaceDown else { return }
+        zoomedID = id
     }
 
     func setPosition(_ id: UUID, _ point: CGPoint) {

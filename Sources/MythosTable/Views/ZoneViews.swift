@@ -41,6 +41,7 @@ struct ZoneStrip: View {
     let zone: Zone
     var cardWidth: CGFloat = 70
     var minHeight: CGFloat = 110
+    @AppStorage("cardScale") private var cardScale = 1.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -57,7 +58,7 @@ struct ZoneStrip: View {
                     }
                 }
                 .padding(.vertical, 4)
-                .frame(minHeight: minHeight, alignment: .leading)
+                .frame(minHeight: minHeight * cardScale, alignment: .leading)
             }
         }
         .padding(8)
@@ -174,11 +175,7 @@ private struct MapCard: View {
                     }
             )
             .onTapGesture { store.selectedID = instance.id }
-            .contextMenu {
-                Button(instance.exhausted ? "Ready" : "Exhaust") { store.toggleExhaust(instance.id) }
-                Button("Flip") { store.flip(instance.id) }
-                Divider()
-                MoveMenu(id: instance.id)
-            }
+            .simultaneousGesture(TapGesture(count: 2).onEnded { store.zoom(instance.id) })
+            .contextMenu { CardContextMenu(instance: instance, store: store) }
     }
 }

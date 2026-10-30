@@ -25,13 +25,23 @@ struct MythosTableApp: App {
                 .task { await store.loadCards() }
         }
         .commands { TableCommands(store: store) }
+
+        Window("How to Play", id: "how-to-play") {
+            HowToPlayView()
+        }
+        .defaultSize(width: 980, height: 700)
     }
 }
 
 struct TableCommands: Commands {
     let store: GameStore
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(replacing: .help) {
+            Button("How to Play") { openWindow(id: "how-to-play") }
+                .keyboardShortcut("?", modifiers: .command)
+        }
         CommandGroup(replacing: .newItem) {
             Button("New Table") { store.newTable() }
             Button("Open Table…") { store.openTable() }.keyboardShortcut("o")
@@ -49,6 +59,12 @@ struct TableCommands: Commands {
             Button("Reveal Chaos Token") { store.revealChaosToken() }
             Button("Next Phase") { store.nextPhase() }
         }
+        CommandGroup(before: .toolbar) {
+            Button("Zoom Selected Card") { store.zoom(store.selectedID) }
+                .keyboardShortcut("y")
+            CardSizePicker()
+            Divider()
+        }
         CommandMenu("Data") {
             Picker("Card Pool", selection: Binding(get: { store.state.cardPool }, set: { store.setCardPool($0) })) {
                 ForEach(CardPool.allCases) { Text($0.title).tag($0) }
@@ -58,6 +74,18 @@ struct TableCommands: Commands {
             Button("Reload Scenario Config") { store.reloadConfig() }
             Button("Reset Scenario Config to Defaults") { ScenarioConfigStore.resetToDefaults(); store.reloadConfig() }
             Button("Show Data Folder in Finder") { store.revealDataFolder() }
+        }
+    }
+}
+
+struct CardSizePicker: View {
+    @AppStorage("cardScale") private var cardScale = 1.0
+    var body: some View {
+        Picker("Card Size", selection: $cardScale) {
+            Text("Small").tag(0.85)
+            Text("Medium").tag(1.0)
+            Text("Large").tag(1.3)
+            Text("Extra Large").tag(1.6)
         }
     }
 }

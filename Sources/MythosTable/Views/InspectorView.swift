@@ -14,6 +14,9 @@ struct InspectorView: View {
                         .frame(height: card?.isHorizontal == true ? 240 : 400)
                         .rotationEffect(.degrees(inst.exhausted ? 90 : 0))
                         .animation(.easeInOut(duration: 0.2), value: inst.exhausted)
+                        .contentShape(Rectangle())
+                        .onTapGesture { store.zoom(id) }
+                        .help("Click to zoom")
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(card?.displayName ?? inst.code).font(.title3.weight(.semibold))
@@ -27,6 +30,7 @@ struct InspectorView: View {
                         Button { store.toggleExhaust(id) } label: {
                             Label(inst.exhausted ? "Ready" : "Exhaust", systemImage: inst.exhausted ? "arrow.uturn.backward" : "arrow.turn.down.right")
                         }
+                        Button { store.zoom(id) } label: { Label("Zoom", systemImage: "plus.magnifyingglass") }
                         MoveMenu(id: id).fixedSize()
                     }
 

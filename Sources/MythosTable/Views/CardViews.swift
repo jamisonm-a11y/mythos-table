@@ -117,9 +117,11 @@ struct CardThumb: View {
     let instance: CardInstance
     var width: CGFloat = 80
     var faceDown = false
+    @AppStorage("cardScale") private var cardScale = 1.0
 
     var body: some View {
         let card = store.card(for: instance)
+        let width = width * cardScale
         let horizontal = (card?.isHorizontal ?? false) && !faceDown
         let w = horizontal ? width / cardAspect : width
         let h = horizontal ? width : width / cardAspect
@@ -199,13 +201,21 @@ extension View {
         self
             .contentShape(Rectangle())
             .onTapGesture { store.selectedID = instance.id }
-            .contextMenu {
-                Button(instance.exhausted ? "Ready" : "Exhaust") { store.toggleExhaust(instance.id) }
-                Button("Flip") { store.flip(instance.id) }
-                Divider()
-                MoveMenu(id: instance.id)
-            }
+            .simultaneousGesture(TapGesture(count: 2).onEnded { store.zoom(instance.id) })
+            .contextMenu { CardContextMenu(instance: instance, store: store) }
             .modifier(OptionalDraggable(id: instance.id, enabled: draggable))
+    }
+}
+
+struct CardContextMenu: View {
+    let instance: CardInstance
+    let store: GameStore
+    var body: some View {
+        Button("Zoom") { store.zoom(instance.id) }
+        Button(instance.exhausted ? "Ready" : "Exhaust") { store.toggleExhaust(instance.id) }
+        Button("Flip") { store.flip(instance.id) }
+        Divider()
+        MoveMenu(id: instance.id)
     }
 }
 
