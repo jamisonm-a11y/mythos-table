@@ -4,10 +4,17 @@ import Observation
 /// Claude as the game master: the player decides what the investigator does, and
 /// Claude carries out the declared actions and everything the game does on its
 /// own (encounter cards, enemies, doom, the Mythos/Enemy/Upkeep phases, cleanup).
-/// Each request is one manual tool-use loop over the Messages API.
+/// Claude runs either inside a local Claude Code session (the user's Claude plan)
+/// or through the Messages API with an API key.
 @MainActor
 @Observable
 final class GameMaster {
+    enum Backend: String, CaseIterable, Identifiable {
+        case claudeCode, api
+        var id: String { rawValue }
+        var title: String { self == .claudeCode ? "Claude plan (Claude Code)" : "API key" }
+    }
+
     enum Request {
         case setUpScenario
         /// Runs phases until it is the player's Investigation phase again.
@@ -34,9 +41,22 @@ final class GameMaster {
     var pendingQuestion: Question?
     var usage = ClaudeClient.Usage()
     var hasAPIKey = APIKeyStore.load() != nil
-    var effort: String = UserDefaults.standard.string(forKey: "autopilotEffort") ?? "medium" {
-        didSet { UserDefaults.standard.set(effort, forKey: "autopilotEffort") }
+    var claudeCodeInstalled = ClaudeCodeSession.findExecutable() != nil
+    var backend: Backend = Backend(rawValue: UserDefaults.standard.string(forKey: "gameMasterBackend") ?? "") ?? .claudeCode {
+        didSet {
+            UserDefaults.standard.set(backend.rawValue, forKey: "gameMasterBackend")
+            session.stop()
+        }
     }
+    var effort: String = UserDefaults.standard.string(forKey: "autopilotEffort") ?? "medium" {
+        didSet {
+            UserDefaults.standard.set(effort, forKey: "autopilotEffort")
+            session.stop()  // effort is fixed per Claude Code session
+        }
+    }
+
+    /// Whether the selected backend can run right now.
+    var isReady: Bool { backend == .api ? hasAPIKey : claudeCodeInstalled }
 
     /// Hard cap on model calls per request so a confused loop can't run up a bill.
     static let maxStepsPerRun = 80
@@ -44,6 +64,10 @@ final class GameMaster {
     @ObservationIgnored private let store: GameStore
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var answerContinuation: CheckedContinuation<String, Never>?
+    @ObservationIgnored private let session = ClaudeCodeSession()
+    @ObservationIgnored private var mcpServer: MCPServer?
+    @ObservationIgnored private var phaseAdvanced = false
+    @ObservationIgnored private var scenarioEnded = false
 
     init(store: GameStore) { self.store = store }
 
@@ -74,13 +98,21 @@ final class GameMaster {
     }
 
     func submit(_ request: Request) {
-        guard !isRunning, let key = APIKeyStore.load() else { return }
-        isRunning = true
+        guard !isRunning, isReady else { return }
         switch request {
         case .setUpScenario: add(.info, "Setting up \(store.state.scenarioName ?? "the scenario")…")
         case .runPhases: add(.info, "Running the \(store.state.phase.title) phase…")
         case .action(let text): add(.player, text)
         }
+        if backend == .claudeCode {
+            submitToClaudeCode(request)
+        } else if let key = APIKeyStore.load() {
+            submitToAPI(request, key: key)
+        }
+    }
+
+    private func submitToAPI(_ request: Request, key: String) {
+        isRunning = true
         task = Task {
             defer {
                 isRunning = false
@@ -116,7 +148,111 @@ final class GameMaster {
 
     func stop() {
         task?.cancel()
+        if backend == .claudeCode {
+            session.stop()
+            isRunning = false
+            add(.info, "Stopped.")
+        }
         answer("(The player stopped the game master.)")
+    }
+
+    // MARK: - Claude Code backend
+
+    private func submitToClaudeCode(_ request: Request) {
+        isRunning = true
+        Task {
+            do {
+                try await ensureSession()
+                let text: String
+                switch request {
+                case .setUpScenario: text = setupInstruction()
+                case .runPhases: text = phasesInstruction()
+                case .action(let action): text = actionInstruction(action)
+                }
+                session.send(text + "\n(Call get_table_state first: the player may have changed the table by hand.)")
+            } catch {
+                add(.error, error.localizedDescription)
+                isRunning = false
+            }
+        }
+    }
+
+    private func ensureSession() async throws {
+        if session.isAlive { return }
+        if mcpServer == nil {
+            let server = MCPServer(tools: GameMasterTools.definitions) { [weak self] name, arguments in
+                guard let self else { return ("Game master is gone.", true) }
+                return await self.handleTool(name, arguments)
+            }
+            try await server.start()
+            mcpServer = server
+        }
+        guard let server = mcpServer else { return }
+        session.onEvent = { [weak self] event in self?.handle(event) }
+        session.onExit = { [weak self] status, stderr in
+            guard let self else { return }
+            if self.isRunning {
+                let detail = stderr.split(separator: "\n").suffix(3).joined(separator: " ")
+                self.add(.error, "Claude Code stopped unexpectedly (exit \(status)). \(detail)")
+                self.isRunning = false
+                self.answer("(Claude Code stopped.)")
+            }
+        }
+        try session.start(mcpURL: server.url, token: server.token,
+                          systemPrompt: Self.systemPrompt + Self.claudeCodeNote, effort: effort)
+        add(.info, "Started a Claude Code session on your Claude plan.")
+    }
+
+    private func handle(_ event: [String: Any]) {
+        switch event["type"] as? String {
+        case "system":
+            guard event["subtype"] as? String == "init" else { return }
+            let servers = event["mcp_servers"] as? [[String: Any]] ?? []
+            if let table = servers.first(where: { $0["name"] as? String == "mythostable" }),
+               table["status"] as? String != "connected" {
+                add(.error, "Claude Code couldn't connect to the table (status: \(table["status"] ?? "unknown")).")
+            }
+        case "assistant":
+            let content = (event["message"] as? [String: Any])?["content"] as? [[String: Any]] ?? []
+            for block in content where block["type"] as? String == "text" {
+                if let text = block["text"] as? String, !text.isEmpty { add(.narration, text) }
+            }
+        case "result":
+            isRunning = false
+            pendingQuestion = nil
+            if event["is_error"] as? Bool == true || event["subtype"] as? String != "success" {
+                let message = event["result"] as? String ?? (event["subtype"] as? String ?? "unknown error")
+                if message.localizedCaseInsensitiveContains("login") || message.localizedCaseInsensitiveContains("api key") {
+                    add(.error, "Claude Code isn't signed in. Open Terminal, run `claude`, and sign in with your Claude account, then try again. (\(message))")
+                } else {
+                    add(.error, message)
+                }
+            } else if store.state.phase == .investigation, scenarioEnded == false {
+                add(.info, "Your turn: round \(store.state.round), \(store.state.actionsRemaining) action\(store.state.actionsRemaining == 1 ? "" : "s") left.")
+            }
+        default:
+            break
+        }
+    }
+
+    // MARK: - Tool calls (both backends)
+
+    private func handleTool(_ name: String, _ input: [String: Any]) async -> (text: String, isError: Bool) {
+        show(name, input)
+        if name == "ask_player" {
+            let answer = await ask(input["question"] as? String ?? "?", choices: input["choices"] as? [String] ?? [])
+            return (answer, false)
+        }
+        do {
+            let output = try store.runTool(name, input)
+            if name == "reveal_chaos_token" || name == "draw_encounter_card" { add(.result, Self.brief(name, output)) }
+            if name == "next_phase" { phaseAdvanced = true }
+            if name == "end_scenario" { scenarioEnded = true }
+            return (Self.encode(output), false)
+        } catch {
+            add(.error, "\(name): \(error.localizedDescription)")
+            return (error.localizedDescription, true)
+        }
     }
 
     func answer(_ text: String) {
@@ -148,6 +284,15 @@ final class GameMaster {
         Run the \(store.state.phase.title) phase of round \(store.state.round) completely, following the rules \
         procedure for that phase and resolving every card effect it triggers. Ask the player only for decisions \
         that are theirs. When the phase is over, call next_phase once and stop.
+        """
+    }
+
+    /// Claude Code keeps one conversation, so it runs all the phases from a single request.
+    private func phasesInstruction() -> String {
+        """
+        Run the game's phases, starting with the current \(store.state.phase.title) phase of round \(store.state.round). \
+        For each phase, follow its rules procedure, resolve every card effect it triggers, then call next_phase. \
+        Keep going until the phase becomes Investigation, then stop: it's the player's turn.
         """
     }
 
@@ -194,33 +339,20 @@ final class GameMaster {
             switch response["stop_reason"] as? String {
             case "tool_use":
                 var results: [[String: Any]] = []
-                var advancedPhase = false
-                var scenarioEnded = false
+                phaseAdvanced = false
+                scenarioEnded = false
                 for block in content where block["type"] as? String == "tool_use" {
                     guard let id = block["id"] as? String, let name = block["name"] as? String else { continue }
-                    let input = block["input"] as? [String: Any] ?? [:]
-                    show(name, input)
-                    if name == "ask_player" {
-                        let answer = await ask(input["question"] as? String ?? "?", choices: input["choices"] as? [String] ?? [])
-                        try Task.checkCancellation()
-                        results.append(["type": "tool_result", "tool_use_id": id, "content": answer])
-                        continue
-                    }
-                    do {
-                        let output = try store.runTool(name, input)
-                        if name == "reveal_chaos_token" || name == "draw_encounter_card" { add(.result, Self.brief(name, output)) }
-                        results.append(["type": "tool_result", "tool_use_id": id, "content": Self.encode(output)])
-                    } catch {
-                        add(.error, "\(name): \(error.localizedDescription)")
-                        results.append(["type": "tool_result", "tool_use_id": id, "content": error.localizedDescription, "is_error": true])
-                    }
-                    if name == "next_phase" { advancedPhase = true }
-                    if name == "end_scenario" { scenarioEnded = true }
+                    let (text, isError) = await handleTool(name, block["input"] as? [String: Any] ?? [:])
+                    try Task.checkCancellation()
+                    var result: [String: Any] = ["type": "tool_result", "tool_use_id": id, "content": text]
+                    if isError { result["is_error"] = true }
+                    results.append(result)
                 }
                 // All results for one assistant turn go back in a single user message.
                 messages.append(["role": "user", "content": results])
                 if scenarioEnded { return true }
-                if stopAfterNextPhase && advancedPhase { return false }
+                if stopAfterNextPhase && phaseAdvanced { return false }
             case "pause_turn":
                 continue
             case "refusal":
@@ -328,5 +460,12 @@ final class GameMaster {
     - Work quickly; don't deliberate over routine bookkeeping.
     - Use remember for things to track across requests (set-aside cards, delayed effects, scenario reminders).
     - When the request is done, stop calling tools and give a one- or two-sentence summary.
+    """
+
+    static let claudeCodeNote = """
+
+    You are running inside MythosTable's game master panel. Your only tools come from the "mythostable" MCP \
+    server (they appear as mcp__mythostable__<name>). Requests from the player arrive one at a time in this \
+    conversation; the table may have changed between them, so check get_table_state at the start of each one.
     """
 }

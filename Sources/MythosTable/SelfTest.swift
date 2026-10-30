@@ -5,6 +5,80 @@ import Foundation
 /// and prints zone counts. Used to verify setup without the UI.
 @MainActor
 enum SelfTest {
+    /// `MythosTable --gm-test`: one real game master request through Claude Code (uses the Claude plan).
+    static func runGameMasterTestIfRequested() {
+        guard CommandLine.arguments.contains("--gm-test") else { return }
+        GameStore.persistenceEnabled = false
+        Task { @MainActor in
+            let store = GameStore()
+            store.state = TableState()
+            await store.loadCards()
+            guard let gathering = store.config.campaigns.flatMap(\.scenarios).first else { exit(1) }
+            store.setUp(SetupPlan(scenario: gathering, deckSets: gathering.encounterSets,
+                                  setAsideSets: [], setAsideCards: gathering.setAsideCards ?? []))
+            let gm = GameMaster(store: store)
+            UserDefaults.standard.set("claudeCode", forKey: "gameMasterBackend")
+            gm.backend = .claudeCode
+            gm.effort = "low"
+            gm.submit(.setUpScenario)
+            var printed = 0
+            for _ in 0..<600 {
+                try? await Task.sleep(for: .milliseconds(500))
+                while printed < gm.entries.count { print("[\(gm.entries[printed].kind)] \(gm.entries[printed].text)"); printed += 1 }
+                if let q = gm.pendingQuestion { print("QUESTION:", q.text, q.choices); gm.answer(q.choices.first ?? "yes") }
+                if !gm.isRunning && printed > 1 { break }
+            }
+            if CommandLine.arguments.contains("--with-action"),
+               let deck = try? await DeckImporter.fetch("1", preferred: .decklist) {
+                await store.importDeck(deck)
+                store.state.investigatorLocationID = store.state[.map].first?.id
+                store.drawOpeningHand()
+                gm.submit(.action("Investigate the Study."))
+                for _ in 0..<600 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    while printed < gm.entries.count { print("[\(gm.entries[printed].kind)] \(gm.entries[printed].text)"); printed += 1 }
+                    if let q = gm.pendingQuestion { print("QUESTION:", q.text, q.choices); gm.answer(q.choices.first ?? "yes") }
+                    if !gm.isRunning { break }
+                }
+                let inv = store.state[.investigator].first
+                print("ACTIONS LEFT:", store.state.actionsRemaining, "INVESTIGATOR CLUES:", inv?.clues ?? -1,
+                      "STUDY CLUES:", store.state[.map].first?.clues ?? -1)
+            }
+            let map = store.state[.map].map { "\(store.card(for: $0)?.name ?? "?")\($0.showingBack ? " (unrevealed)" : "") clues=\($0.clues)" }
+            print("MAP:", map)
+            print("INVESTIGATOR AT:", store.state.investigatorLocationID.map { store.name(of: $0) } ?? "none")
+            gm.stop()
+            exit(0)
+        }
+    }
+
+    /// `MythosTable --mcp-test`: serves the table tools and prints the endpoint for manual JSON-RPC calls.
+    static func runMCPTestIfRequested() {
+        guard CommandLine.arguments.contains("--mcp-test") else { return }
+        GameStore.persistenceEnabled = false
+        Task { @MainActor in
+            let store = GameStore()
+            store.state = TableState()
+            await store.loadCards()
+            if let gathering = store.config.campaigns.flatMap(\.scenarios).first {
+                store.setUp(SetupPlan(scenario: gathering, deckSets: gathering.encounterSets,
+                                      setAsideSets: [], setAsideCards: gathering.setAsideCards ?? []))
+            }
+            let server = MCPServer(tools: GameMasterTools.definitions) { name, arguments in
+                await MainActor.run {
+                    do { return (GameMaster.encode(try store.runTool(name, arguments)), false) }
+                    catch { return (error.localizedDescription, true) }
+                }
+            }
+            try? await server.start()
+            print("URL \(server.url)")
+            print("TOKEN \(server.token)")
+            fflush(stdout)
+            try? await Task.sleep(for: .seconds(30))
+            exit(0)
+        }
+    }
+
     static func runIfRequested() {
         guard CommandLine.arguments.contains("--self-test") else { return }
         GameStore.persistenceEnabled = false

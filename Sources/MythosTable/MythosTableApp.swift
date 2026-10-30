@@ -5,6 +5,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Needed when launched as a bare SwiftPM executable rather than an .app bundle.
         if CommandLine.arguments.contains("--self-test") { SelfTest.runIfRequested(); return }
+        if CommandLine.arguments.contains("--gm-test") { SelfTest.runGameMasterTestIfRequested(); return }
+        if CommandLine.arguments.contains("--mcp-test") { SelfTest.runMCPTestIfRequested(); return }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }

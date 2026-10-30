@@ -32,6 +32,16 @@ Game Master tab.
 - **Your decisions stay yours.** Whenever a card or rule gives the investigator a choice, Claude asks you in the panel.
 - **Place Starting Locations** lets Claude lay out the scenario's opening map after Set Up Scenario.
 
-Needs your own Anthropic API key (stored in the macOS keychain, or read from `ANTHROPIC_API_KEY`). Usage is billed to
-your account, and the panel shows an estimated cost. Requests opt in to server-side refusal fallbacks
-(`fallbacks: "default"`), and each request is capped at 80 model calls.
+Two ways to run Claude (choose in the Claude tab):
+
+- **Claude plan (default):** the app starts a headless [Claude Code](https://claude.com/claude-code) session signed in
+  with your Claude account, so play counts toward your plan's usage limits with no API charges. MythosTable serves
+  its table tools to that session over a local MCP endpoint (127.0.0.1 only, with a per-launch token), and Claude
+  Code's built-in tools (shell, files) are turned off. Requires Claude Code installed and signed in (`claude`, then
+  `/login`).
+- **API key:** calls the Anthropic Messages API directly with your own key (stored in the macOS keychain, or read
+  from `ANTHROPIC_API_KEY`), billed per use; the panel shows an estimated cost. Requests opt in to server-side
+  refusal fallbacks (`fallbacks: "default"`), and each request is capped at 80 model calls.
+
+Test modes: `--self-test` (offline), `--mcp-test` (serves the tools for 30 s), and `--gm-test` (one real request
+through Claude Code).

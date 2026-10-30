@@ -86,7 +86,7 @@ enum Guide {
             "**When you're done**, click **End Turn** (⇧⌘↩). Claude runs the Enemy and Upkeep phases and the next round's Mythos phase (encounter cards, doom, hunters, attacks, and cleanup), then hands the turn back to you.",
             "**Your choices stay yours.** Whenever a card gives you a choice, Claude asks in the panel and waits for your answer.",
             "After **Set Up Scenario**, **Place Starting Locations** lets Claude lay out the opening map for you.",
-        ], tip: "Claude uses your own Anthropic API key, billed to your account; the panel shows a running cost estimate. You can still fix anything by hand with the normal table controls, and Claude picks up the current table state each time."),
+        ], tip: "By default Claude runs through Claude Code on your Claude plan, with no extra charges; install Claude Code and sign in once. You can switch to an API key instead in the Claude tab. Either way, you can still fix anything by hand with the normal table controls, and Claude picks up the current table state each time."),
         GuideSection(id: "controls", title: "MythosTable Controls", icon: "keyboard", paragraphs: [
             "**Cards:** click to inspect, double-click (or ⌘Y) to zoom, right-click for quick actions, and drag to move a card between zones or onto the map. On the map, drag a card to reposition it.",
             "**Readability:** **View → Card Size** makes every card bigger. The zoom view lets you flip between front and back without changing the table.",

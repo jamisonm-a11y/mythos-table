@@ -11,8 +11,8 @@ struct GameMasterPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !gameMaster.hasAPIKey {
-                keyEntry
+            if !gameMaster.isReady {
+                connectView
             } else {
                 header
                 if let question = gameMaster.pendingQuestion {
@@ -28,14 +28,44 @@ struct GameMasterPanel: View {
         .padding(10)
     }
 
-    // MARK: - Key
+    // MARK: - Connect
+
+    private var connectView: some View {
+        @Bindable var gameMaster = gameMaster
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Game Master").font(.headline)
+            Text("You play the investigator. Claude runs everything else: it resolves the actions you declare, encounter cards, enemies, doom, and the Mythos, Enemy, and Upkeep phases, and asks you whenever a choice is yours.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Picker("Run Claude with", selection: $gameMaster.backend) {
+                ForEach(GameMaster.Backend.allCases) { Text($0.title).tag($0) }
+            }
+            if gameMaster.backend == .claudeCode {
+                claudeCodeSetup
+            } else {
+                keyEntry
+            }
+        }
+    }
+
+    private var claudeCodeSetup: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Uses your Claude subscription through Claude Code, with no API key or extra charges; games count toward your plan's usage limits.")
+                .font(.callout).fixedSize(horizontal: false, vertical: true)
+            Text("Claude Code wasn't found on this Mac. Install it, then open Terminal, run `claude`, and sign in with your Claude account.")
+                .font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Link("Install Claude Code", destination: URL(string: "https://claude.com/claude-code")!)
+                Spacer()
+                Button("Check Again") { gameMaster.claudeCodeInstalled = ClaudeCodeSession.findExecutable() != nil }
+            }
+        }
+    }
 
     private var keyEntry: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Game Master").font(.headline)
-            Text("You play the investigator. Claude runs everything else: it resolves the actions you declare, encounter cards, enemies, doom, and the Mythos, Enemy, and Upkeep phases, and asks you whenever a choice is yours. It uses the Anthropic API with your own API key, billed to your account; the panel shows a running cost estimate.")
-                .font(.callout).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text("Uses the Anthropic API with your own key, billed per use to your account; the panel shows a running cost estimate.")
+                .font(.callout).fixedSize(horizontal: false, vertical: true)
             SecureField("Anthropic API key (sk-ant-…)", text: $keyInput)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { gameMaster.saveKey(keyInput); keyInput = "" }
@@ -186,14 +216,25 @@ struct GameMasterPanel: View {
             .help("How carefully Claude thinks. Higher is slower and costs more.")
             .disabled(gameMaster.isRunning)
             Spacer()
-            Text(String(format: "≈ $%.2f", gameMaster.usage.estimatedDollars))
-                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                .help("Estimated API cost this session")
+            if gameMaster.backend == .api {
+                Text(String(format: "≈ $%.2f", gameMaster.usage.estimatedDollars))
+                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    .help("Estimated API cost this session")
+            } else {
+                Text("On your Claude plan").font(.caption).foregroundStyle(.secondary)
+            }
             Menu("More") {
+                Picker("Run Claude with", selection: $gameMaster.backend) {
+                    ForEach(GameMaster.Backend.allCases) { Text($0.title).tag($0) }
+                }
+                .disabled(gameMaster.isRunning)
+                Divider()
                 Button("Clear Transcript") { gameMaster.clearTranscript() }
                 Button("Clear Game Master Notes") { store.state.autopilotNotes = nil }
                 Divider()
-                Button("Forget API Key", role: .destructive) { gameMaster.forgetKey() }
+                if gameMaster.hasAPIKey {
+                    Button("Forget API Key", role: .destructive) { gameMaster.forgetKey() }
+                }
             }
             .menuStyle(.borderlessButton).fixedSize()
             .font(.caption)
