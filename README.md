@@ -4,7 +4,7 @@ A manual solo table for Arkham Horror: The Card Game (Night of the Zealot). It h
 
 ## Build & run
 ```
-./scripts/make-app.sh && open build/MythosTable.app   # bundled .app
+./scripts/make-app.sh --install                        # builds MythosTable.app into ~/Applications
 swift run MythosTable                                  # or run directly
 .build/debug/MythosTable --self-test                   # headless setup check (writes nothing)
 ```
